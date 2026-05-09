@@ -1,0 +1,49 @@
+; ============================================================
+; GoldLiquidityHunter_PRO v3.5 – AUTO SL + BIAS + OB
+; Version propre avec SL automatique selon le broker
+; ============================================================
+
+; === RISK MANAGEMENT (Cent Safe) ===
+RiskPercent=0.32
+MaxDailyLossPct=1.60
+MaxDrawdownPct=8.50
+MaxTradesPerDay=2
+EnableDD_Pause=true
+
+; === STRATEGY CORE v3.5 ===
+ATR_Period=14
+OB_MaxAge_Bars=40
+OB_BodyRatio=0.33
+SL_BufferPoints=25.0          ; Le code calcule auto le Stops Level du broker
+EMA200_BiasBuffer=0.0035
+EMA200_NeutralBuf=0.0085
+
+; === TAKE PROFIT ===
+TP1_RR=2.5
+TP2_RR=3.8
+TP2_ClosePercent=55.0
+EnableTP2=true
+
+; === BREAKEVEN & TRAILING ===
+EnableBreakeven=true
+BE_RR=0.9
+EnableTrailing=true
+Trail_StartRR=1.2
+Trail_ATR_Multi=0.60
+
+; === SESSION & NEWS ===
+SessionStartGMT=6
+SessionEndGMT=17
+NewsBufferMin=25
+EnableNewsFilter=true
+SpreadMaxPoints=55
+EnableMaxSpread=true
+
+; === NOTIFICATIONS ===
+EnablePush=true
+EnableEmail=false
+EnableAlert=true
+LogLevel=2
+
+; === ADVANCED ===
+MagicNumber=20260103

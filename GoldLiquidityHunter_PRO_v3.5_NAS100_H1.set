@@ -1,0 +1,49 @@
+; ============================================================
+; GoldLiquidityHunter_PRO v3.5 – NAS100 H1 OPTIMIZED
+; Preset spécialement conçu pour NAS100 sur timeframe H1
+; ============================================================
+
+; === RISK MANAGEMENT (NAS100 H1) ===
+RiskPercent=0.40
+MaxDailyLossPct=2.00
+MaxDrawdownPct=10.00
+MaxTradesPerDay=3
+EnableDD_Pause=true
+
+; === STRATEGY CORE (H1 NAS100) ===
+ATR_Period=14
+OB_MaxAge_Bars=50          ; Un peu plus d'âge accepté sur H1
+OB_BodyRatio=0.30          ; Plus permissif (bruit H1)
+SL_BufferPoints=20.0       ; SL plus serré mais sécurisé
+EMA200_BiasBuffer=0.0040   ; Seuil biais un peu plus large
+EMA200_NeutralBuf=0.0090
+
+; === TAKE PROFIT (H1 - plus rapide) ===
+TP1_RR=2.2
+TP2_RR=3.5
+TP2_ClosePercent=60.0
+EnableTP2=true
+
+; === BREAKEVEN & TRAILING (H1) ===
+EnableBreakeven=true
+BE_RR=0.85
+EnableTrailing=true
+Trail_StartRR=1.1
+Trail_ATR_Multi=0.55
+
+; === SESSION & NEWS (US Session focus) ===
+SessionStartGMT=8
+SessionEndGMT=20
+NewsBufferMin=20
+EnableNewsFilter=true
+SpreadMaxPoints=80
+EnableMaxSpread=true
+
+; === NOTIFICATIONS ===
+EnablePush=true
+EnableEmail=false
+EnableAlert=true
+LogLevel=2
+
+; === ADVANCED ===
+MagicNumber=20260103
