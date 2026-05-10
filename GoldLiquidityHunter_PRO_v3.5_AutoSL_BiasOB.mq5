@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.4 SIMPLE          ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.52                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
