@@ -116,7 +116,7 @@ input int      SessionStartGMT    = 6;
 input int      SessionEndGMT      = 17;
 input int      NewsBufferMin      = 25;
 input bool     EnableNewsFilter   = true;
-input int      SpreadMaxPoints    = 55;
+input int      SpreadMaxPoints    = 55;     // Max SYMBOL_SPREAD (pts) ; PU Prime XAU ~13 moy. → souvent 22-28 en .set
 input bool     EnableMaxSpread    = true;
 
 input group "══ NOTIFICATIONS ══"

@@ -33,7 +33,8 @@ SessionStartGMT=6
 SessionEndGMT=17
 NewsBufferMin=25
 EnableNewsFilter=true
-SpreadMaxPoints=55
+; Spread : PU Prime XAUUSD ~12.5-13.5 pts/session (ref. MyFXBook) — filtre ~2x la moyenne
+SpreadMaxPoints=24
 EnableMaxSpread=true
 
 EnablePush=true
