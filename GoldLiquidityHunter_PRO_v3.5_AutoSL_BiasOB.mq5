@@ -1,20 +1,19 @@
 //+------------------------------------------------------------------+
-//|     GoldLiquidityHunter_PRO v3.4 – Simple Version (Bias + OB)   |
+//|     GoldLiquidityHunter_PRO – XAUUSD (Bias D1 + OB)               |
 //|          Copyright 2026, Professional Trading Systems            |
-//|           XAUUSD / NAS100 – ICT/SMC Simplified Expert Advisor   |
+//|           Or (XAU / GOLD) — ICT/SMC Simplified Expert Advisor     |
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.53                ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.54 (XAUUSD)       ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
 ║  (Sweep et Displacement désactivés par défaut pour plus de trades)  ║
 ║                                                                      ║
-║  MEILLEURE CONFIGURATION :                                           ║
-║  - Paire     : XAUUSD (H4) ou NAS100 (H1)                           ║
-║  - Graphique : n'importe quel TF (M1, M15…) — l'analyse OB/ATR suit SignalTF ║
-║  - SignalTF  : H4 (or) ou H1 (NAS) — réglage input, pas le TF du graphique   ║
+║  PÉRIMÈTRE : OR UNIQUEMENT (XAUUSD, XAUUSD.s, GOLD…)                 ║
+║  - Graphique : n'importe quel TF — OB / ATR / barres sur SignalTF  ║
+║  - SignalTF  : défaut H4 (recommandé pour l’or)                      ║
 ║                                                                      ║
 ║  PARAMÈTRES RECOMMANDÉS :                                            ║
 ║  RiskPercent         = 0.50                                         ║
@@ -30,8 +29,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.53"
-#property description "GoldLiquidityHunter v3.53 — SL auto broker + OB sur SignalTF (graphique libre)"
+#property version     "3.54"
+#property description "GoldLiquidityHunter v3.54 — XAUUSD / or uniquement · SL broker · OB sur SignalTF"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -91,7 +90,7 @@ input int      MaxTradesPerDay    = 3;      // Trades max par jour
 input bool     EnableDD_Pause     = true;
 
 input group "══ STRATEGY CORE (SIMPLIFIÉ) ══"
-input ENUM_TIMEFRAMES SignalTF      = PERIOD_H4;  // TF analyse OB / barres / ATR (indépendant du graphique)
+input ENUM_TIMEFRAMES SignalTF      = PERIOD_H4;  // Analyse OB/ATR/barres (défaut H4 pour XAUUSD)
 input int      ATR_Period         = 14;
 input int      OB_MaxAge_Bars     = 40;     // Âge max OB
 input double   OB_BodyRatio       = 0.35;   // Ratio corps/range (très relâché)
@@ -127,7 +126,7 @@ input bool     EnableAlert        = true;
 input int      LogLevel           = 2;
 
 input group "══ ADVANCED ══"
-input bool     StrictSymbolWhitelist = true;  // false = autoriser tout symbole (risque hors périmètre)
+input bool     StrictSymbolWhitelist = true;  // true = or seulement (XAU/GOLD) ; false = tout symbole (tests)
 input ulong    MagicNumber        = 20260103;
 
 //+------------------------------------------------------------------+
@@ -156,8 +155,8 @@ SActiveTrade g_Trade;
 SBias        g_Bias;
 SOrderBlock  g_OB;
 
-const string EA_NAME    = "GoldLiquidityHunter_PRO v3.5";
-const string EA_VERSION = "3.53 AutoSL + Bias + OB";
+const string EA_NAME    = "GoldLiquidityHunter_PRO XAU";
+const string EA_VERSION = "3.54 XAUUSD + Bias + OB";
 
 //+------------------------------------------------------------------+
 //| Helpers — point / stops broker, symbole, filling                  |
@@ -183,10 +182,7 @@ bool SymbolIsAllowed()
       return true;
    string s = _Symbol;
    StringToUpper(s);
-   return (StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0 ||
-           StringFind(s, "NAS") >= 0 || StringFind(s, "US30") >= 0 ||
-           StringFind(s, "US100") >= 0 || StringFind(s, "NDX") >= 0 ||
-           StringFind(s, "USTEC") >= 0);
+   return (StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0);
 }
 
 void SetupTradeFillingMode()
@@ -207,7 +203,7 @@ int OnInit()
 {
    if(!SymbolIsAllowed())
    {
-      Alert(EA_NAME + " | ERREUR: Symbole non reconnu (XAU/GOLD/NAS/US30…) ou désactivez StrictSymbolWhitelist");
+      Alert(EA_NAME + " | ERREUR: symbole non-or (attendu XAU / GOLD dans le nom) — ou StrictSymbolWhitelist=false pour tests");
       return INIT_FAILED;
    }
 
@@ -534,7 +530,7 @@ void OpenTradeSimple()
    const int    regPts = BrokerStopOrFreezePoints();
 
    bool   result  = false;
-   string comment = EA_NAME + " v3.53";
+   string comment = EA_NAME + " v3.54";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
@@ -957,7 +953,7 @@ void UpdateComment()
    }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.53 ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.54 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -968,5 +964,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.53                           |
+//|                    FIN DU CODE – v3.54 XAUUSD                     |
 //+------------------------------------------------------------------+

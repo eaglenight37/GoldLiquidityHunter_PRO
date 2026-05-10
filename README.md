@@ -1,2 +1,2 @@
 # GoldLiquidityHunter_PRO
-GoldLiquidityHunter_PRO v3.5 - ICT/SMC EA for XAUUSD H4 and NAS100 H1
+GoldLiquidityHunter_PRO v3.5+ — EA ICT/SMC **or uniquement** (XAUUSD, XAUUSD.s, GOLD…), biais D1 EMA200 + order blocks, **SignalTF** H4 par défaut (graphique MT5 libre).
