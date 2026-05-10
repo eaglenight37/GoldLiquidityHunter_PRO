@@ -29,8 +29,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.50"
-#property description "GoldLiquidityHunter_PRO v3.5 – Auto Stops Level + Bias + OB"
+#property version     "3.52"
+#property description "GoldLiquidityHunter_PRO v3.52 – Auto Stops + Bias D1 + OB (TF graph) + gestion trade"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -94,8 +94,8 @@ input int      ATR_Period         = 14;
 input int      OB_MaxAge_Bars     = 40;     // Âge max OB
 input double   OB_BodyRatio       = 0.35;   // Ratio corps/range (très relâché)
 input double   SL_BufferPoints    = 25.0;   // Distance minimale SL (le code prendra le max avec le Stops Level du broker)
-input double   EMA200_BiasBuffer  = 0.0035;
-input double   EMA200_NeutralBuf  = 0.0085;
+input double   EMA200_BiasBuffer  = 0.0035;   // Ratio |close-EMA|/EMA (zone avec NeutralBuf, voir CalculateBias)
+input double   EMA200_NeutralBuf  = 0.0085;   // Ratio — zone morte si max(Bias,Neutral) utilisé
 
 input group "══ TAKE PROFIT ══"
 input double   TP1_RR             = 2.5;
@@ -136,7 +136,7 @@ CSymbolInfo    SymInfo;
 CAccountInfo   Account;
 
 int   hEMA200_D1  = INVALID_HANDLE;
-int   hATR_H4     = INVALID_HANDLE;
+int   hATR_Chart  = INVALID_HANDLE;   // ATR sur le même TF que le graphique (aligné OB / signaux)
 
 double   g_StartBalance      = 0.0;
 double   g_DailyStartBalance = 0.0;
@@ -154,7 +154,7 @@ SBias        g_Bias;
 SOrderBlock  g_OB;
 
 const string EA_NAME    = "GoldLiquidityHunter_PRO v3.5";
-const string EA_VERSION = "3.5 AutoSL + Bias + OB";
+const string EA_VERSION = "3.52 AutoSL + Bias + OB";
 
 //+------------------------------------------------------------------+
 //|                           OnInit                                  |
@@ -168,9 +168,9 @@ int OnInit()
    }
 
    hEMA200_D1 = iMA(_Symbol, PERIOD_D1, 200, 0, MODE_EMA, PRICE_CLOSE);
-   hATR_H4    = iATR(_Symbol, PERIOD_H4, ATR_Period);
+   hATR_Chart = iATR(_Symbol, _Period, ATR_Period);
 
-   if(hEMA200_D1 == INVALID_HANDLE || hATR_H4 == INVALID_HANDLE)
+   if(hEMA200_D1 == INVALID_HANDLE || hATR_Chart == INVALID_HANDLE)
    {
       Alert(EA_NAME + " | ERREUR: Handles indicateurs");
       return INIT_FAILED;
@@ -206,7 +206,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    if(hEMA200_D1 != INVALID_HANDLE) IndicatorRelease(hEMA200_D1);
-   if(hATR_H4    != INVALID_HANDLE) IndicatorRelease(hATR_H4);
+   if(hATR_Chart != INVALID_HANDLE) IndicatorRelease(hATR_Chart);
    Comment("");
    LogMsg(1, EA_NAME + " | Désactivé | Raison: " + IntegerToString(reason));
 }
@@ -305,8 +305,9 @@ SBias CalculateBias()
 
    if(bias.ema200 <= 0.0) return bias;
 
-   double neutralThresh = bias.ema200 * EMA200_NeutralBuf;
-   double dist = bias.closeD1 - bias.ema200;
+   const double deadRatio = MathMax(EMA200_NeutralBuf, EMA200_BiasBuffer);
+   const double neutralThresh = bias.ema200 * deadRatio;
+   const double dist = bias.closeD1 - bias.ema200;
 
    if(MathAbs(dist) < neutralThresh)
    {
@@ -427,6 +428,55 @@ SOrderBlock DetectOrderBlock()
 }
 
 //+------------------------------------------------------------------+
+//| Ticket position (API MQL5) + résolution après ordre marché     |
+//+------------------------------------------------------------------+
+ulong GetOurNewestPositionTicket()
+{
+   ulong bestTicket = 0;
+   datetime bestTime = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      const ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(!PositionSelectByTicket(ticket))
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != MagicNumber)
+         continue;
+      const datetime tm = (datetime)PositionGetInteger(POSITION_TIME);
+      if(tm >= bestTime)
+      {
+         bestTime = tm;
+         bestTicket = ticket;
+      }
+   }
+   return bestTicket;
+}
+
+//+------------------------------------------------------------------+
+ulong PositionTicketFromLastDeal()
+{
+   const ulong deal = Trade.ResultDeal();
+   if(deal == 0)
+      return 0;
+   if(!HistoryDealSelect(deal))
+      return 0;
+   return (ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+}
+
+//+------------------------------------------------------------------+
+ulong ResolveOpenedPositionTicket()
+{
+   ulong t = GetOurNewestPositionTicket();
+   if(t > 0)
+      return t;
+   t = PositionTicketFromLastDeal();
+   return t;
+}
+
+//+------------------------------------------------------------------+
 //|                OpenTradeSimple – Ouverture simplifiée            |
 //+------------------------------------------------------------------+
 void OpenTradeSimple()
@@ -439,7 +489,7 @@ void OpenTradeSimple()
    double point = _Point;
 
    bool result = false;
-   string comment = EA_NAME + " v3.4 Simple";
+   string comment = EA_NAME + " v3.52";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
@@ -466,9 +516,10 @@ void OpenTradeSimple()
 
       if(result)
       {
-         ulong ticket = Trade.ResultOrder();
          g_Trade.isOpen     = true;
-         g_Trade.ticket     = ticket;
+         g_Trade.ticket     = ResolveOpenedPositionTicket();
+         if(g_Trade.ticket == 0)
+            LogMsg(2, "BUY exécuté mais aucun ticket position résolu — gestion trade peut échouer");
          g_Trade.direction  = 1;
          g_Trade.entryPrice = Trade.ResultPrice();
          g_Trade.sl         = slPx;
@@ -486,6 +537,8 @@ void OpenTradeSimple()
          LogMsg(1, notif);
          if(EnableAlert) Alert(EA_NAME + "\n" + notif);
       }
+      else
+         LogMsg(2, "BUY refusé | retcode=" + IntegerToString(Trade.ResultRetcode()) + " " + Trade.ResultRetcodeDescription());
    }
    else if(g_Bias.direction == -1 && !g_OB.bullish)
    {
@@ -512,9 +565,10 @@ void OpenTradeSimple()
 
       if(result)
       {
-         ulong ticket = Trade.ResultOrder();
          g_Trade.isOpen     = true;
-         g_Trade.ticket     = ticket;
+         g_Trade.ticket     = ResolveOpenedPositionTicket();
+         if(g_Trade.ticket == 0)
+            LogMsg(2, "SELL exécuté mais aucun ticket position résolu — gestion trade peut échouer");
          g_Trade.direction  = -1;
          g_Trade.entryPrice = Trade.ResultPrice();
          g_Trade.sl         = slPx;
@@ -532,6 +586,8 @@ void OpenTradeSimple()
          LogMsg(1, notif);
          if(EnableAlert) Alert(EA_NAME + "\n" + notif);
       }
+      else
+         LogMsg(2, "SELL refusé | retcode=" + IntegerToString(Trade.ResultRetcode()) + " " + Trade.ResultRetcodeDescription());
    }
 }
 
@@ -771,19 +827,26 @@ void OnTradeClose()
 
 void CheckExistingPosition()
 {
-   for(int i = 0; i < PositionsTotal(); i++)
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
-      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == (long)MagicNumber)
-      {
-         g_Trade.isOpen     = true;
-         g_Trade.ticket     = PositionGetInteger(POSITION_TICKET);
-         g_Trade.direction  = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? 1 : -1;
-         g_Trade.entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-         g_Trade.sl         = PositionGetDouble(POSITION_SL);
-         g_Trade.tp1        = PositionGetDouble(POSITION_TP);
-         g_Trade.openTime   = (datetime)PositionGetInteger(POSITION_TIME);
-         break;
-      }
+      const ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      if(!PositionSelectByTicket(ticket))
+         continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      if((ulong)PositionGetInteger(POSITION_MAGIC) != MagicNumber)
+         continue;
+
+      g_Trade.isOpen     = true;
+      g_Trade.ticket     = ticket;
+      g_Trade.direction  = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? 1 : -1;
+      g_Trade.entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      g_Trade.sl         = PositionGetDouble(POSITION_SL);
+      g_Trade.tp1        = PositionGetDouble(POSITION_TP);
+      g_Trade.openTime   = (datetime)PositionGetInteger(POSITION_TIME);
+      break;
    }
 }
 
@@ -807,7 +870,7 @@ double GetATR()
 {
    double buf[];
    ArraySetAsSeries(buf, true);
-   if(CopyBuffer(hATR_H4, 0, 1, 3, buf) < 3) return 0.0;
+   if(CopyBuffer(hATR_Chart, 0, 1, 3, buf) < 3) return 0.0;
    return buf[0];
 }
 
@@ -829,17 +892,28 @@ void LogMsg(const int level, const string msg)
 void UpdateComment()
 {
    double bal    = Account.Balance();
-   double equity = Account.Equity();
    double dd     = (g_StartBalance > 0.0) ? MathMax((g_StartBalance - bal) / g_StartBalance * 100.0, 0.0) : 0.0;
 
-   string tradeInfo = g_Trade.isOpen ?
-      (g_Trade.direction == 1 ? "🟢 BUY" : "🔴 SELL") + " #" + IntegerToString(g_Trade.ticket) + "\n" +
-      "Entry: " + DoubleToString(g_Trade.entryPrice, 2) + " | SL: " + DoubleToString(g_Trade.sl, 2) + "\n" +
-      "R: " + DoubleToString(MathAbs((SymbolInfoDouble(_Symbol, g_Trade.direction == 1 ? SYMBOL_BID : SYMBOL_ASK) - g_Trade.entryPrice) / (g_Trade.entryPrice - g_Trade.sl)), 2) :
-      "⬜ AUCUN TRADE ACTIF";
+   string tradeInfo;
+   if(!g_Trade.isOpen)
+      tradeInfo = "⬜ AUCUN TRADE ACTIF";
+   else
+   {
+      const double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      const double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      const double px = (g_Trade.direction == 1) ? bid : ask;
+      const double rDist = MathAbs(g_Trade.entryPrice - g_Trade.sl);
+      double rVal = 0.0;
+      if(rDist > 0.0)
+         rVal = (g_Trade.direction == 1) ? (px - g_Trade.entryPrice) / rDist : (g_Trade.entryPrice - px) / rDist;
+
+      tradeInfo = (g_Trade.direction == 1 ? "🟢 BUY" : "🔴 SELL") + " #" + IntegerToString(g_Trade.ticket) + "\n" +
+                  "Entry: " + DoubleToString(g_Trade.entryPrice, 2) + " | SL: " + DoubleToString(g_Trade.sl, 2) + "\n" +
+                  "R: " + DoubleToString(rVal, 2);
+   }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.4 SIMPLE ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.52 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -850,5 +924,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.4 Simple                     |
+//|                    FIN DU CODE – v3.52                           |
 //+------------------------------------------------------------------+

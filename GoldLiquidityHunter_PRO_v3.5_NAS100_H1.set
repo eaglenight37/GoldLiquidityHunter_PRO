@@ -1,42 +1,40 @@
-; ============================================================
-; GoldLiquidityHunter_PRO v3.51 – NAS100 (preset H1)
-; WorkTF=60 = PERIOD_H1 (aligné avec la logique signal de l’EA)
-; ============================================================
+; GoldLiquidityHunter_PRO v3.52 – preset NAS100 (graphique H1)
+; OB et signaux utilisent le timeframe du graphique (_Period)
 
-; --- EA v3.51 (entrées réelles) ---
-WorkTF=60
 RiskPercent=0.40
+MaxDailyLossPct=2.00
+MaxDrawdownPct=10.00
 MaxTradesPerDay=3
-MaxSpreadPoints=80
-OnePositionPerSymbol=true
-EMA200_BiasBuffer=0.40
+EnableDD_Pause=true
+
 ATR_Period=14
 OB_MaxAge_Bars=50
 OB_BodyRatio=0.30
 SL_BufferPoints=20.0
+EMA200_BiasBuffer=0.0040
+EMA200_NeutralBuf=0.0090
+
 TP1_RR=2.2
 TP2_RR=3.5
 TP2_ClosePercent=60.0
+EnableTP2=true
+
+EnableBreakeven=true
 BE_RR=0.85
+EnableTrailing=true
 Trail_StartRR=1.1
 Trail_ATR_Multi=0.55
-LogLevel=2
-MagicNumber=20260103
 
-; --- Référence uniquement (non implémentés dans le .mq5) ---
-MaxDailyLossPct=2.00
-MaxDrawdownPct=10.00
-EnableDD_Pause=true
-EMA200_NeutralBuf=0.90
-EnableTP2=true
-EnableBreakeven=true
-EnableTrailing=true
 SessionStartGMT=8
 SessionEndGMT=20
 NewsBufferMin=20
 EnableNewsFilter=true
 SpreadMaxPoints=80
 EnableMaxSpread=true
+
 EnablePush=true
 EnableEmail=false
 EnableAlert=true
+LogLevel=2
+
+MagicNumber=20260103
