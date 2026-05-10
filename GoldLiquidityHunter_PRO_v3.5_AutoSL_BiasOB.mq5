@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.52                ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.53                ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
@@ -13,7 +13,8 @@
 ║                                                                      ║
 ║  MEILLEURE CONFIGURATION :                                           ║
 ║  - Paire     : XAUUSD (H4) ou NAS100 (H1)                           ║
-║  - Timeframe : H4 (XAUUSD) ou H1 (NAS100)                           ║
+║  - Graphique : n'importe quel TF (M1, M15…) — l'analyse OB/ATR suit SignalTF ║
+║  - SignalTF  : H4 (or) ou H1 (NAS) — réglage input, pas le TF du graphique   ║
 ║                                                                      ║
 ║  PARAMÈTRES RECOMMANDÉS :                                            ║
 ║  RiskPercent         = 0.50                                         ║
@@ -29,8 +30,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.52"
-#property description "GoldLiquidityHunter_PRO v3.52 – Auto Stops + Bias D1 + OB (TF graph) + gestion trade"
+#property version     "3.53"
+#property description "GoldLiquidityHunter v3.53 — SL auto broker + OB sur SignalTF (graphique libre)"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -90,6 +91,7 @@ input int      MaxTradesPerDay    = 3;      // Trades max par jour
 input bool     EnableDD_Pause     = true;
 
 input group "══ STRATEGY CORE (SIMPLIFIÉ) ══"
+input ENUM_TIMEFRAMES SignalTF      = PERIOD_H4;  // TF analyse OB / barres / ATR (indépendant du graphique)
 input int      ATR_Period         = 14;
 input int      OB_MaxAge_Bars     = 40;     // Âge max OB
 input double   OB_BodyRatio       = 0.35;   // Ratio corps/range (très relâché)
@@ -125,6 +127,7 @@ input bool     EnableAlert        = true;
 input int      LogLevel           = 2;
 
 input group "══ ADVANCED ══"
+input bool     StrictSymbolWhitelist = true;  // false = autoriser tout symbole (risque hors périmètre)
 input ulong    MagicNumber        = 20260103;
 
 //+------------------------------------------------------------------+
@@ -136,7 +139,7 @@ CSymbolInfo    SymInfo;
 CAccountInfo   Account;
 
 int   hEMA200_D1  = INVALID_HANDLE;
-int   hATR_Chart  = INVALID_HANDLE;   // ATR sur le même TF que le graphique (aligné OB / signaux)
+int   hATR_Signal = INVALID_HANDLE;   // ATR sur SignalTF (aligné OB / signaux)
 
 double   g_StartBalance      = 0.0;
 double   g_DailyStartBalance = 0.0;
@@ -154,23 +157,64 @@ SBias        g_Bias;
 SOrderBlock  g_OB;
 
 const string EA_NAME    = "GoldLiquidityHunter_PRO v3.5";
-const string EA_VERSION = "3.52 AutoSL + Bias + OB";
+const string EA_VERSION = "3.53 AutoSL + Bias + OB";
+
+//+------------------------------------------------------------------+
+//| Helpers — point / stops broker, symbole, filling                  |
+//+------------------------------------------------------------------+
+double BrokerPoint()
+{
+   double p = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   if(p <= 0.0)
+      p = _Point;
+   return p;
+}
+
+int BrokerStopOrFreezePoints()
+{
+   const int sl = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   const int fr = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   return MathMax(sl, fr);
+}
+
+bool SymbolIsAllowed()
+{
+   if(!StrictSymbolWhitelist)
+      return true;
+   string s = _Symbol;
+   StringToUpper(s);
+   return (StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0 ||
+           StringFind(s, "NAS") >= 0 || StringFind(s, "US30") >= 0 ||
+           StringFind(s, "US100") >= 0 || StringFind(s, "NDX") >= 0 ||
+           StringFind(s, "USTEC") >= 0);
+}
+
+void SetupTradeFillingMode()
+{
+   const long mode = SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+   if((mode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      Trade.SetTypeFilling(ORDER_FILLING_IOC);
+   else if((mode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      Trade.SetTypeFilling(ORDER_FILLING_FOK);
+   else
+      Trade.SetTypeFilling(ORDER_FILLING_RETURN);
+}
 
 //+------------------------------------------------------------------+
 //|                           OnInit                                  |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   if(StringFind(_Symbol, "XAU") < 0 && StringFind(_Symbol, "GOLD") < 0 && StringFind(_Symbol, "NAS") < 0 && StringFind(_Symbol, "US30") < 0)
+   if(!SymbolIsAllowed())
    {
-      Alert(EA_NAME + " | ERREUR: Optimisé pour XAUUSD ou NAS100/US30");
+      Alert(EA_NAME + " | ERREUR: Symbole non reconnu (XAU/GOLD/NAS/US30…) ou désactivez StrictSymbolWhitelist");
       return INIT_FAILED;
    }
 
    hEMA200_D1 = iMA(_Symbol, PERIOD_D1, 200, 0, MODE_EMA, PRICE_CLOSE);
-   hATR_Chart = iATR(_Symbol, _Period, ATR_Period);
+   hATR_Signal = iATR(_Symbol, SignalTF, ATR_Period);
 
-   if(hEMA200_D1 == INVALID_HANDLE || hATR_Chart == INVALID_HANDLE)
+   if(hEMA200_D1 == INVALID_HANDLE || hATR_Signal == INVALID_HANDLE)
    {
       Alert(EA_NAME + " | ERREUR: Handles indicateurs");
       return INIT_FAILED;
@@ -178,7 +222,7 @@ int OnInit()
 
    Trade.SetExpertMagicNumber(MagicNumber);
    Trade.SetDeviationInPoints(20);
-   Trade.SetTypeFilling(ORDER_FILLING_IOC);
+   SetupTradeFillingMode();
 
    SymInfo.Name(_Symbol);
    SymInfo.RefreshRates();
@@ -192,8 +236,8 @@ int OnInit()
 
    LogMsg(1, "══════════════════════════════════════════════════════");
    LogMsg(1, EA_NAME + " | " + EA_VERSION + " | Initialisé avec succès");
-   LogMsg(1, "Symbole: " + _Symbol + " | TF: " + EnumToString(_Period));
-   LogMsg(1, "Mode: Biais Daily EMA200 + Order Block seulement");
+   LogMsg(1, "Symbole: " + _Symbol + " | Graph: " + EnumToString(_Period) + " | SignalTF: " + EnumToString(SignalTF));
+   LogMsg(1, "Mode: Biais Daily EMA200 + Order Block sur SignalTF (SL auto stops/freeze broker)");
    LogMsg(1, "Balance: " + DoubleToString(g_StartBalance, 2) + " | Risk: " + DoubleToString(RiskPercent, 2) + "%");
    LogMsg(1, "══════════════════════════════════════════════════════");
 
@@ -206,7 +250,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    if(hEMA200_D1 != INVALID_HANDLE) IndicatorRelease(hEMA200_D1);
-   if(hATR_Chart != INVALID_HANDLE) IndicatorRelease(hATR_Chart);
+   if(hATR_Signal != INVALID_HANDLE) IndicatorRelease(hATR_Signal);
    Comment("");
    LogMsg(1, EA_NAME + " | Désactivé | Raison: " + IntegerToString(reason));
 }
@@ -216,7 +260,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   datetime currentBarTime = iTime(_Symbol, _Period, 0);
+   datetime currentBarTime = iTime(_Symbol, SignalTF, 0);
    if(currentBarTime != g_LastBarTime)
    {
       g_LastBarTime = currentBarTime;
@@ -355,11 +399,11 @@ SOrderBlock DetectOrderBlock()
    ArraySetAsSeries(l, true); ArraySetAsSeries(c, true);
    ArraySetAsSeries(t, true);
 
-   if(CopyOpen(  _Symbol, _Period, 1, scanSize, o) < scanSize) return ob;
-   if(CopyHigh(  _Symbol, _Period, 1, scanSize, h) < scanSize) return ob;
-   if(CopyLow(   _Symbol, _Period, 1, scanSize, l) < scanSize) return ob;
-   if(CopyClose( _Symbol, _Period, 1, scanSize, c) < scanSize) return ob;
-   if(CopyTime(  _Symbol, _Period, 1, scanSize, t) < scanSize) return ob;
+   if(CopyOpen(  _Symbol, SignalTF, 1, scanSize, o) < scanSize) return ob;
+   if(CopyHigh(  _Symbol, SignalTF, 1, scanSize, h) < scanSize) return ob;
+   if(CopyLow(   _Symbol, SignalTF, 1, scanSize, l) < scanSize) return ob;
+   if(CopyClose( _Symbol, SignalTF, 1, scanSize, c) < scanSize) return ob;
+   if(CopyTime(  _Symbol, SignalTF, 1, scanSize, t) < scanSize) return ob;
 
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -484,32 +528,31 @@ void OpenTradeSimple()
    ResetActiveTrade();
 
    SymInfo.RefreshRates();
-   double ask   = SymInfo.Ask();
-   double bid   = SymInfo.Bid();
-   double point = _Point;
+   const double ask   = SymInfo.Ask();
+   const double bid   = SymInfo.Bid();
+   const double point = BrokerPoint();
+   const int    regPts = BrokerStopOrFreezePoints();
 
-   bool result = false;
-   string comment = EA_NAME + " v3.52";
+   bool   result  = false;
+   string comment = EA_NAME + " v3.53";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
-      double entryPrice = ask;
+      const double entryPrice = ask;
 
-      // Calcul automatique de la distance minimale SL (Stops Level du broker)
-      int stops_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-      double min_stop_dist = (stops_level + 5) * point;   // +5 points de sécurité
-      double buffer_dist  = SL_BufferPoints * point;
+      const double min_stop_dist = (regPts + 5) * point;
+      const double buffer_dist   = SL_BufferPoints * point;
 
-      double sl_distance = MathMax(buffer_dist, min_stop_dist);
-      double slPx = NormalizeDouble(g_OB.obLow - sl_distance, _Digits);
-      double slDist = entryPrice - slPx;
+      const double sl_distance = MathMax(buffer_dist, min_stop_dist);
+      const double slPx = NormalizeDouble(g_OB.obLow - sl_distance, _Digits);
+      const double slDist = entryPrice - slPx;
 
       if(slDist < 8 * point) return;
 
-      double tp1Px = NormalizeDouble(entryPrice + slDist * TP1_RR, _Digits);
-      double tp2Px = NormalizeDouble(entryPrice + slDist * TP2_RR, _Digits);
+      const double tp1Px = NormalizeDouble(entryPrice + slDist * TP1_RR, _Digits);
+      const double tp2Px = NormalizeDouble(entryPrice + slDist * TP2_RR, _Digits);
 
-      double lot = CalculateLotSize(slDist);
+      const double lot = CalculateLotSize(slDist);
       if(lot <= 0.0) return;
 
       result = Trade.Buy(lot, _Symbol, 0.0, slPx, tp1Px, comment);
@@ -542,23 +585,21 @@ void OpenTradeSimple()
    }
    else if(g_Bias.direction == -1 && !g_OB.bullish)
    {
-      double entryPrice = bid;
+      const double entryPrice = bid;
 
-      // Calcul automatique de la distance minimale SL (Stops Level du broker)
-      int stops_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-      double min_stop_dist = (stops_level + 5) * point;   // +5 points de sécurité
-      double buffer_dist  = SL_BufferPoints * point;
+      const double min_stop_dist = (regPts + 5) * point;
+      const double buffer_dist   = SL_BufferPoints * point;
 
-      double sl_distance = MathMax(buffer_dist, min_stop_dist);
-      double slPx = NormalizeDouble(g_OB.obHigh + sl_distance, _Digits);
-      double slDist = slPx - entryPrice;
+      const double sl_distance = MathMax(buffer_dist, min_stop_dist);
+      const double slPx = NormalizeDouble(g_OB.obHigh + sl_distance, _Digits);
+      const double slDist = slPx - entryPrice;
 
       if(slDist < 8 * point) return;
 
-      double tp1Px = NormalizeDouble(entryPrice - slDist * TP1_RR, _Digits);
-      double tp2Px = NormalizeDouble(entryPrice - slDist * TP2_RR, _Digits);
+      const double tp1Px = NormalizeDouble(entryPrice - slDist * TP1_RR, _Digits);
+      const double tp2Px = NormalizeDouble(entryPrice - slDist * TP2_RR, _Digits);
 
-      double lot = CalculateLotSize(slDist);
+      const double lot = CalculateLotSize(slDist);
       if(lot <= 0.0) return;
 
       result = Trade.Sell(lot, _Symbol, 0.0, slPx, tp1Px, comment);
@@ -597,6 +638,8 @@ void OpenTradeSimple()
 void ManageOpenTrade()
 {
    if(!g_Trade.isOpen) return;
+
+   const double pt = BrokerPoint();
 
    if(!PositionSelectByTicket(g_Trade.ticket))
    {
@@ -643,10 +686,10 @@ void ManageOpenTrade()
    // BREAKEVEN
    if(EnableBreakeven && !g_Trade.beActivated && currentR >= BE_RR)
    {
-      double newSL = (g_Trade.direction == 1) ? NormalizeDouble(entry + 2.0 * _Point, _Digits) :
-                     NormalizeDouble(entry - 2.0 * _Point, _Digits);
+      double newSL = (g_Trade.direction == 1) ? NormalizeDouble(entry + 2.0 * pt, _Digits) :
+                     NormalizeDouble(entry - 2.0 * pt, _Digits);
 
-      bool improvement = (g_Trade.direction == 1) ? (newSL > posSL + _Point) : (newSL < posSL - _Point);
+      bool improvement = (g_Trade.direction == 1) ? (newSL > posSL + pt) : (newSL < posSL - pt);
 
       if(improvement)
       {
@@ -668,7 +711,7 @@ void ManageOpenTrade()
       if(g_Trade.direction == 1)
       {
          trailSL = NormalizeDouble(bid - trailDist, _Digits);
-         if(trailSL > posSL + _Point)
+         if(trailSL > posSL + pt)
          {
             if(Trade.PositionModify(_Symbol, trailSL, g_Trade.tp1))
             {
@@ -680,7 +723,7 @@ void ManageOpenTrade()
       else
       {
          trailSL = NormalizeDouble(ask + trailDist, _Digits);
-         if(trailSL < posSL - _Point)
+         if(trailSL < posSL - pt)
          {
             if(Trade.PositionModify(_Symbol, trailSL, g_Trade.tp1))
             {
@@ -701,13 +744,14 @@ double CalculateLotSize(double slDistancePx)
 
    double balance    = Account.Balance();
    double riskAmount = balance * (RiskPercent / 100.0);
-   double slPoints   = slDistancePx / _Point;
+   const double symPt = BrokerPoint();
+   double slPoints   = slDistancePx / symPt;
 
    double tickVal    = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double tickSize   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    if(tickVal <= 0.0 || tickSize <= 0.0) return 0.0;
 
-   double valuePerPt = (tickVal / tickSize) * _Point;
+   double valuePerPt = (tickVal / tickSize) * symPt;
    double rawLot     = riskAmount / (slPoints * valuePerPt);
 
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -870,7 +914,7 @@ double GetATR()
 {
    double buf[];
    ArraySetAsSeries(buf, true);
-   if(CopyBuffer(hATR_Chart, 0, 1, 3, buf) < 3) return 0.0;
+   if(CopyBuffer(hATR_Signal, 0, 1, 3, buf) < 3) return 0.0;
    return buf[0];
 }
 
@@ -913,7 +957,7 @@ void UpdateComment()
    }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.52 ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.53 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -924,5 +968,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.52                           |
+//|                    FIN DU CODE – v3.53                           |
 //+------------------------------------------------------------------+

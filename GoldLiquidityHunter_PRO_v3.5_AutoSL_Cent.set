@@ -1,6 +1,9 @@
-; GoldLiquidityHunter_PRO v3.52 – preset Cent / XAUUSD
-; Toutes les clés correspondent aux input du .mq5 (attaché sur H4 recommandé)
-; Ratios EMA : EMA200_* = |close-EMA|/EMA en ratio (ex. 0.0085 = 0.85 %)
+; GoldLiquidityHunter_PRO v3.53 – preset Cent / XAUUSD (ex. XAUUSD.s PU Prime)
+; Graphique libre (M1, M15…) — analyse OB/ATR sur SignalTF (H4 pour l’or)
+; Ratios EMA : EMA200_* = |close-EMA|/EMA en ratio
+
+SignalTF=240
+StrictSymbolWhitelist=true
 
 RiskPercent=0.32
 MaxDailyLossPct=1.60

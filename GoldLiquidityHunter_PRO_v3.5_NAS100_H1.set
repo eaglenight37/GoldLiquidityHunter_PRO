@@ -1,5 +1,8 @@
-; GoldLiquidityHunter_PRO v3.52 – preset NAS100 (graphique H1)
-; OB et signaux utilisent le timeframe du graphique (_Period)
+; GoldLiquidityHunter_PRO v3.53 – preset NAS100 (graphique libre, analyse H1)
+; SignalTF=60 = PERIOD_H1
+
+SignalTF=60
+StrictSymbolWhitelist=true
 
 RiskPercent=0.40
 MaxDailyLossPct=2.00
