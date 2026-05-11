@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.54 (XAUUSD)       ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.55 (XAUUSD)       ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
@@ -29,8 +29,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.54"
-#property description "GoldLiquidityHunter v3.54 — XAUUSD / or uniquement · SL broker · OB sur SignalTF"
+#property version     "3.55"
+#property description "GoldLiquidityHunter v3.55 — XAUUSD / or · log debug biais D1 (LogLevel 3)"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -156,7 +156,7 @@ SBias        g_Bias;
 SOrderBlock  g_OB;
 
 const string EA_NAME    = "GoldLiquidityHunter_PRO XAU";
-const string EA_VERSION = "3.54 XAUUSD + Bias + OB";
+const string EA_VERSION = "3.55 XAUUSD + Bias + OB";
 
 //+------------------------------------------------------------------+
 //| Helpers — point / stops broker, symbole, filling                  |
@@ -334,11 +334,19 @@ SBias CalculateBias()
 
    double emaArr[];
    ArraySetAsSeries(emaArr, true);
-   if(CopyBuffer(hEMA200_D1, 0, 1, 3, emaArr) < 3) return bias;
+   if(CopyBuffer(hEMA200_D1, 0, 1, 3, emaArr) < 3)
+   {
+      LogMsg(2, "CalculateBias: CopyBuffer EMA200 D1 incomplet — biais NEUTRE par défaut");
+      return bias;
+   }
 
    double closeArr[];
    ArraySetAsSeries(closeArr, true);
-   if(CopyClose(_Symbol, PERIOD_D1, 1, 2, closeArr) < 2) return bias;
+   if(CopyClose(_Symbol, PERIOD_D1, 1, 2, closeArr) < 2)
+   {
+      LogMsg(2, "CalculateBias: CopyClose D1 incomplet — biais NEUTRE par défaut");
+      return bias;
+   }
 
    bias.ema200  = emaArr[0];
    bias.closeD1 = closeArr[0];
@@ -348,6 +356,15 @@ SBias CalculateBias()
    const double deadRatio = MathMax(EMA200_NeutralBuf, EMA200_BiasBuffer);
    const double neutralThresh = bias.ema200 * deadRatio;
    const double dist = bias.closeD1 - bias.ema200;
+
+   if(LogLevel >= 3)
+   {
+      const double distPct = MathAbs(dist) / bias.ema200 * 100.0;
+      const double neuPct  = deadRatio * 100.0;
+      LogMsg(3, "Bias D1 bar[1] close=" + DoubleToString(bias.closeD1, _Digits) +
+              " ema200=" + DoubleToString(bias.ema200, _Digits) +
+              " |écart|=" + DoubleToString(distPct, 3) + "% seuil neutre=" + DoubleToString(neuPct, 3) + "% (broker " + _Symbol + ")");
+   }
 
    if(MathAbs(dist) < neutralThresh)
    {
@@ -530,7 +547,7 @@ void OpenTradeSimple()
    const int    regPts = BrokerStopOrFreezePoints();
 
    bool   result  = false;
-   string comment = EA_NAME + " v3.54";
+   string comment = EA_NAME + " v3.55";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
@@ -953,7 +970,7 @@ void UpdateComment()
    }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.54 ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.55 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -964,5 +981,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.54 XAUUSD                     |
+//|                    FIN DU CODE – v3.55 XAUUSD                     |
 //+------------------------------------------------------------------+
