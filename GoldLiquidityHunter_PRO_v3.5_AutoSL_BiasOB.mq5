@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.55 (XAUUSD)       ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.56 (XAUUSD)       ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
@@ -29,8 +29,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.55"
-#property description "GoldLiquidityHunter v3.55 — XAUUSD / or · log debug biais D1 (LogLevel 3)"
+#property version     "3.56"
+#property description "GoldLiquidityHunter v3.56 — XAU · prefetch D1 + attente EMA200 (PU Prime / .s)"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -156,7 +156,7 @@ SBias        g_Bias;
 SOrderBlock  g_OB;
 
 const string EA_NAME    = "GoldLiquidityHunter_PRO XAU";
-const string EA_VERSION = "3.55 XAUUSD + Bias + OB";
+const string EA_VERSION = "3.56 XAUUSD + Bias + OB";
 
 //+------------------------------------------------------------------+
 //| Helpers — point / stops broker, symbole, filling                  |
@@ -197,6 +197,33 @@ void SetupTradeFillingMode()
 }
 
 //+------------------------------------------------------------------+
+//| Historique D1 + attente calcul indicateur (PU Prime / sym .s)   |
+//+------------------------------------------------------------------+
+void PrefetchHistoryDaily(const int minBars)
+{
+   datetime t[];
+   ArraySetAsSeries(t, true);
+   const int n = (int)CopyTime(_Symbol, PERIOD_D1, 0, minBars, t);
+   if(n < minBars)
+      LogMsg(1, "Prefetch D1: " + IntegerToString(n) + "/" + IntegerToString(minBars) +
+             " barres — ouvrez " + _Symbol + " en D1, F2 (Archives), ou Home sur le graphique.");
+}
+
+bool WaitIndicatorCalculated(const int handle, const int needBars, const int timeoutMs)
+{
+   const uint t0 = GetTickCount();
+   while((int)BarsCalculated(handle) < needBars)
+   {
+      if(IsStopped())
+         return false;
+      if((int)(GetTickCount() - t0) > timeoutMs)
+         break;
+      Sleep(50);
+   }
+   return ((int)BarsCalculated(handle) >= needBars);
+}
+
+//+------------------------------------------------------------------+
 //|                           OnInit                                  |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -216,6 +243,12 @@ int OnInit()
       return INIT_FAILED;
    }
 
+   SymbolSelect(_Symbol, true);
+   PrefetchHistoryDaily(320);
+   if(!WaitIndicatorCalculated(hEMA200_D1, 210, 15000))
+      LogMsg(1, "EMA200 D1: calcul incomplet après 15s — ouvrez un graphique D1 " + _Symbol + ", chargez l'historique, puis réactivez l'EA.");
+   if(!WaitIndicatorCalculated(hATR_Signal, ATR_Period + 5, 8000))
+      LogMsg(1, "ATR: calcul incomplet — vérifier historique " + EnumToString(SignalTF));
    Trade.SetExpertMagicNumber(MagicNumber);
    Trade.SetDeviationInPoints(20);
    SetupTradeFillingMode();
@@ -334,7 +367,7 @@ SBias CalculateBias()
 
    double emaArr[];
    ArraySetAsSeries(emaArr, true);
-   if(CopyBuffer(hEMA200_D1, 0, 1, 3, emaArr) < 3)
+   if(CopyBuffer(hEMA200_D1, 0, 1, 1, emaArr) != 1)
    {
       LogMsg(2, "CalculateBias: CopyBuffer EMA200 D1 incomplet — biais NEUTRE par défaut");
       return bias;
@@ -547,7 +580,7 @@ void OpenTradeSimple()
    const int    regPts = BrokerStopOrFreezePoints();
 
    bool   result  = false;
-   string comment = EA_NAME + " v3.55";
+   string comment = EA_NAME + " v3.56";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
@@ -970,7 +1003,7 @@ void UpdateComment()
    }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.55 ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.56 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -981,5 +1014,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.55 XAUUSD                     |
+//|                    FIN DU CODE – v3.56 XAUUSD                     |
 //+------------------------------------------------------------------+
