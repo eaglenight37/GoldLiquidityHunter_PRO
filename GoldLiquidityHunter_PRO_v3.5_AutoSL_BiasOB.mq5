@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 /*
 ╔══════════════════════════════════════════════════════════════════════╗
-║           USER MANUAL – GoldLiquidityHunter_PRO v3.56 (XAUUSD)       ║
+║           USER MANUAL – GoldLiquidityHunter_PRO v3.57 (XAUUSD)       ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  VERSION SIMPLIFIÉE : Biais Daily EMA200 + Order Block seulement   ║
@@ -13,8 +13,8 @@
 ║                                                                      ║
 ║  PÉRIMÈTRE : OR UNIQUEMENT (XAUUSD, XAUUSD.s, GOLD…)                 ║
 ║  - Graphique : n'importe quel TF — OB / ATR / barres sur SignalTF  ║
-║  - SignalTF  : défaut H4 (recommandé pour l’or)                      ║
-║                                                                      ║
+║  - Filtres anti-range (SignalTF) : ADX + ATR/prix + volume ticks    ║
+║  - SignalTF défaut H4 (or)                                          ║
 ║  PARAMÈTRES RECOMMANDÉS :                                            ║
 ║  RiskPercent         = 0.50                                         ║
 ║  MaxTradesPerDay     = 3                                            ║
@@ -29,8 +29,8 @@
 
 #property copyright   "Professional Trading Systems 2026"
 #property link        "https://goldliquidityhunter.pro"
-#property version     "3.56"
-#property description "GoldLiquidityHunter v3.56 — XAU · prefetch D1 + attente EMA200 (PU Prime / .s)"
+#property version     "3.57"
+#property description "GoldLiquidityHunter v3.57 — XAU · anti-range ADX/ATR/volume (SignalTF)"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -98,6 +98,17 @@ input double   SL_BufferPoints    = 25.0;   // Distance minimale SL (le code pre
 input double   EMA200_BiasBuffer  = 0.0035;   // Ratio |close-EMA|/EMA (zone avec NeutralBuf, voir CalculateBias)
 input double   EMA200_NeutralBuf  = 0.0085;   // Ratio — zone morte si max(Bias,Neutral) utilisé
 
+input group "══ ANTI-RANGE / ACTIVITÉ (SignalTF) ══"
+input bool     EnableAntiRangeFilter = true;  // Master : éviter ranges H4 / marché trop calme
+input bool     UseADXFilter          = true;  // ADX sur SignalTF (tendance vs range)
+input int      ADX_Period            = 14;
+input double   MinADX                = 22.0;   // Pas d’ordre si ADX[1] < (souvent <20 = range)
+input bool     UseATRActivityFilter  = true;  // ATR / prix bougie fermée [1]
+input double   MinATRtoPricePct      = 0.12;  // % min : ATR/close*100 sur bar [1] (ex. 0.12)
+input bool     UseTickVolumeFilter   = true;  // Volume ticks vs moyenne mobile
+input int      VolumeSMABars         = 20;
+input double   VolumeAboveSMAFactor  = 1.12; // vol[1] >= moyenne(vol[2..]) * facteur
+
 input group "══ TAKE PROFIT ══"
 input double   TP1_RR             = 2.5;
 input double   TP2_RR             = 3.8;
@@ -139,6 +150,7 @@ CAccountInfo   Account;
 
 int   hEMA200_D1  = INVALID_HANDLE;
 int   hATR_Signal = INVALID_HANDLE;   // ATR sur SignalTF (aligné OB / signaux)
+int   hADX_Signal = INVALID_HANDLE;   // ADX sur SignalTF (anti-range)
 
 double   g_StartBalance      = 0.0;
 double   g_DailyStartBalance = 0.0;
@@ -156,7 +168,7 @@ SBias        g_Bias;
 SOrderBlock  g_OB;
 
 const string EA_NAME    = "GoldLiquidityHunter_PRO XAU";
-const string EA_VERSION = "3.56 XAUUSD + Bias + OB";
+const string EA_VERSION = "3.57 XAU + Bias + OB + anti-range";
 
 //+------------------------------------------------------------------+
 //| Helpers — point / stops broker, symbole, filling                  |
@@ -236,8 +248,9 @@ int OnInit()
 
    hEMA200_D1 = iMA(_Symbol, PERIOD_D1, 200, 0, MODE_EMA, PRICE_CLOSE);
    hATR_Signal = iATR(_Symbol, SignalTF, ATR_Period);
+   hADX_Signal = iADX(_Symbol, SignalTF, ADX_Period);
 
-   if(hEMA200_D1 == INVALID_HANDLE || hATR_Signal == INVALID_HANDLE)
+   if(hEMA200_D1 == INVALID_HANDLE || hATR_Signal == INVALID_HANDLE || hADX_Signal == INVALID_HANDLE)
    {
       Alert(EA_NAME + " | ERREUR: Handles indicateurs");
       return INIT_FAILED;
@@ -245,10 +258,18 @@ int OnInit()
 
    SymbolSelect(_Symbol, true);
    PrefetchHistoryDaily(320);
+   datetime tSig[];
+   ArraySetAsSeries(tSig, true);
+   const int nSig = (int)CopyTime(_Symbol, SignalTF, 0, 400, tSig);
+   if(nSig < 250)
+      LogMsg(1, "Prefetch " + EnumToString(SignalTF) + ": " + IntegerToString(nSig) +
+             " barres — ouvrez ce TF, Home / F2 pour charger l'historique.");
    if(!WaitIndicatorCalculated(hEMA200_D1, 210, 15000))
       LogMsg(1, "EMA200 D1: calcul incomplet après 15s — ouvrez un graphique D1 " + _Symbol + ", chargez l'historique, puis réactivez l'EA.");
    if(!WaitIndicatorCalculated(hATR_Signal, ATR_Period + 5, 8000))
       LogMsg(1, "ATR: calcul incomplet — vérifier historique " + EnumToString(SignalTF));
+   if(!WaitIndicatorCalculated(hADX_Signal, ADX_Period + 50, 8000))
+      LogMsg(1, "ADX: calcul incomplet — vérifier historique " + EnumToString(SignalTF));
    Trade.SetExpertMagicNumber(MagicNumber);
    Trade.SetDeviationInPoints(20);
    SetupTradeFillingMode();
@@ -266,7 +287,7 @@ int OnInit()
    LogMsg(1, "══════════════════════════════════════════════════════");
    LogMsg(1, EA_NAME + " | " + EA_VERSION + " | Initialisé avec succès");
    LogMsg(1, "Symbole: " + _Symbol + " | Graph: " + EnumToString(_Period) + " | SignalTF: " + EnumToString(SignalTF));
-   LogMsg(1, "Mode: Biais Daily EMA200 + Order Block sur SignalTF (SL auto stops/freeze broker)");
+   LogMsg(1, "Mode: Biais D1 EMA200 + OB SignalTF + filtres anti-range (ADX/ATR/volume)");
    LogMsg(1, "Balance: " + DoubleToString(g_StartBalance, 2) + " | Risk: " + DoubleToString(RiskPercent, 2) + "%");
    LogMsg(1, "══════════════════════════════════════════════════════");
 
@@ -280,6 +301,7 @@ void OnDeinit(const int reason)
 {
    if(hEMA200_D1 != INVALID_HANDLE) IndicatorRelease(hEMA200_D1);
    if(hATR_Signal != INVALID_HANDLE) IndicatorRelease(hATR_Signal);
+   if(hADX_Signal != INVALID_HANDLE) IndicatorRelease(hADX_Signal);
    Comment("");
    LogMsg(1, EA_NAME + " | Désactivé | Raison: " + IntegerToString(reason));
 }
@@ -338,6 +360,9 @@ void OnNewBar()
       LogMsg(3, "Aucun Order Block frais → ignoré");
       return;
    }
+
+   if(!PassesAntiRangeFilter())
+      return;
 
    // === FILTRES SESSION / NEWS / SPREAD ===
    if(!CheckTradeFilters()) return;
@@ -580,7 +605,7 @@ void OpenTradeSimple()
    const int    regPts = BrokerStopOrFreezePoints();
 
    bool   result  = false;
-   string comment = EA_NAME + " v3.56";
+   string comment = EA_NAME + " v3.57";
 
    if(g_Bias.direction == 1 && g_OB.bullish)
    {
@@ -812,6 +837,85 @@ double CalculateLotSize(double slDistancePx)
 }
 
 //+------------------------------------------------------------------+
+//| Anti-range / activité (même SignalTF que l’OB)                    |
+//+------------------------------------------------------------------+
+bool PassesAntiRangeFilter()
+{
+   if(!EnableAntiRangeFilter)
+      return true;
+
+   const double close1 = iClose(_Symbol, SignalTF, 1);
+   if(close1 <= 0.0)
+   {
+      LogMsg(3, "Anti-range: close[1] invalide");
+      return false;
+   }
+
+   if(UseADXFilter)
+   {
+      double adx[];
+      ArraySetAsSeries(adx, true);
+      if(CopyBuffer(hADX_Signal, 0, 1, 1, adx) != 1)
+      {
+         LogMsg(3, "Anti-range: ADX indisponible");
+         return false;
+      }
+      if(adx[0] < MinADX)
+      {
+         LogMsg(3, "Anti-range: ADX=" + DoubleToString(adx[0], 2) + " < " + DoubleToString(MinADX, 1));
+         return false;
+      }
+   }
+
+   if(UseATRActivityFilter)
+   {
+      const double atr = GetATR();
+      if(atr <= 0.0)
+      {
+         LogMsg(3, "Anti-range: ATR nul");
+         return false;
+      }
+      const double atrPct = atr / close1 * 100.0;
+      if(atrPct < MinATRtoPricePct)
+      {
+         LogMsg(3, "Anti-range: ATR/prix=" + DoubleToString(atrPct, 3) + "% < " + DoubleToString(MinATRtoPricePct, 3) + "%");
+         return false;
+      }
+   }
+
+   if(UseTickVolumeFilter)
+   {
+      const int need = VolumeSMABars + 1;
+      if(need < 3)
+         return true;
+      long vol[];
+      ArraySetAsSeries(vol, true);
+      if(CopyTickVolume(_Symbol, SignalTF, 1, need, vol) < need)
+      {
+         LogMsg(3, "Anti-range: volumes ticks incomplets");
+         return false;
+      }
+      double sum = 0.0;
+      for(int i = 1; i <= VolumeSMABars; i++)
+         sum += (double)vol[i];
+      const double sma = sum / (double)VolumeSMABars;
+      if(sma <= 0.0)
+      {
+         LogMsg(3, "Anti-range: moyenne volume nulle");
+         return false;
+      }
+      if((double)vol[0] < sma * VolumeAboveSMAFactor)
+      {
+         LogMsg(3, "Anti-range: vol bar[1]=" + IntegerToString(vol[0]) + " < SMA(" + IntegerToString(VolumeSMABars) + ")*" +
+                DoubleToString(VolumeAboveSMAFactor, 2));
+         return false;
+      }
+   }
+
+   return true;
+}
+
+//+------------------------------------------------------------------+
 //|      CheckTradeFilters (simplifié)                               |
 //+------------------------------------------------------------------+
 bool CheckTradeFilters()
@@ -1003,7 +1107,7 @@ void UpdateComment()
    }
 
    string c = "";
-   c += "╔══ " + EA_NAME + " v3.56 ══╗\n";
+   c += "╔══ " + EA_NAME + " v3.57 ══╗\n";
    c += "Balance: " + DoubleToString(bal, 2) + " | DD: " + DoubleToString(dd, 2) + "%\n";
    c += "Trades/jour: " + IntegerToString(g_DailyTradeCount) + "/" + IntegerToString(MaxTradesPerDay) + "\n";
    c += "Biais: " + g_Bias.label + "\n";
@@ -1014,5 +1118,5 @@ void UpdateComment()
    Comment(c);
 }
 //+------------------------------------------------------------------+
-//|                    FIN DU CODE – v3.56 XAUUSD                     |
+//|                    FIN DU CODE – v3.57 XAUUSD                     |
 //+------------------------------------------------------------------+

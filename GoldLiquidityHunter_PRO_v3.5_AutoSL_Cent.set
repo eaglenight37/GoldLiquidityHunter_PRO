@@ -1,6 +1,5 @@
-; GoldLiquidityHunter_PRO v3.56 – XAUUSD / or (ex. XAUUSD.s PU Prime Cent)
-; Graphique libre (M1, M15…) — analyse OB/ATR sur SignalTF (H4 pour l’or)
-; Ratios EMA : EMA200_* = |close-EMA|/EMA en ratio
+; GoldLiquidityHunter_PRO v3.57 – XAUUSD / or (ex. XAUUSD.s PU Prime Cent)
+; Anti-range H4 : ADX + ATR/prix + volume ticks (désactiver EnableAntiRangeFilter=false pour comparer)
 
 SignalTF=240
 StrictSymbolWhitelist=true
@@ -17,6 +16,16 @@ OB_BodyRatio=0.33
 SL_BufferPoints=25.0
 EMA200_BiasBuffer=0.0035
 EMA200_NeutralBuf=0.0085
+
+EnableAntiRangeFilter=true
+UseADXFilter=true
+ADX_Period=14
+MinADX=22.0
+UseATRActivityFilter=true
+MinATRtoPricePct=0.12
+UseTickVolumeFilter=true
+VolumeSMABars=20
+VolumeAboveSMAFactor=1.12
 
 TP1_RR=2.5
 TP2_RR=3.8
