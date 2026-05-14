@@ -1,0 +1,4 @@
+# InstitutionalGold — optional news events (server time = terminal TimeCurrent)
+# Format / format : YYYY.MM.DD HH:MM;  (semicolon end / point-virgule fin)
+# Example / exemple :
+# 2026.06.05 14:30;
