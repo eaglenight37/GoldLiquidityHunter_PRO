@@ -264,7 +264,7 @@ void ProcessSignal()
 
       if(trade.Buy(lot, _Symbol, ask, sl, tp, "SuperTrendBuy"))
       {
-         if(!ResolvePositionTicketAfterDeal(POSITION_TYPE_BUY, ask, sl))
+         if(!ResolvePositionTicketAfterDeal(ask, sl))
             Print("EvoX: Buy OK mais ticket position non résolu.");
       }
    }
@@ -278,7 +278,7 @@ void ProcessSignal()
 
       if(trade.Sell(lot, _Symbol, bid, sl, tp, "SuperTrendSell"))
       {
-         if(!ResolvePositionTicketAfterDeal(POSITION_TYPE_SELL, bid, sl))
+         if(!ResolvePositionTicketAfterDeal(bid, sl))
             Print("EvoX: Sell OK mais ticket position non résolu.");
       }
    }
@@ -350,7 +350,7 @@ void SyncActivePositionState()
    initialSL = PositionGetDouble(POSITION_SL);
 }
 
-bool ResolvePositionTicketAfterDeal(const ENUM_POSITION_TYPE type, const double entry, const double sl)
+bool ResolvePositionTicketAfterDeal(const double entry, const double sl)
 {
    const ulong dealTicket = trade.ResultDeal();
    if(dealTicket == 0)
