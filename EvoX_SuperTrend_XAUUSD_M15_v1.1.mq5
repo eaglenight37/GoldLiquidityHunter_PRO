@@ -248,7 +248,11 @@ void ProcessSignal()
    const double slDistPrice = MathMax(_Point, MathAbs(close1 - superTrend));
    double lot = CalculateLotSize(slDistPrice * 1.8);
 
-   if(!IsTradeAllowed() || !TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      return;
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      return;
+   if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
       return;
 
    if(PositionsTotalByMagic() != 0)
