@@ -1260,7 +1260,7 @@ bool OpenMarketOrder(const int dir, const double lot, const double sl, const dou
       const uint rc = Trade.ResultRetcode();
       LogMsg(2, "Order failed attempt " + IntegerToString(attempt) + " retcode=" + IntegerToString(rc) + " " + Trade.ResultRetcodeDescription());
 
-      if(rc == TRADE_REQUOTE || rc == TRADE_RETCODE_PRICE_OFF || rc == TRADE_RETCODE_PRICE_CHANGED)
+      if(rc == TRADE_RETCODE_REQUOTE || rc == TRADE_RETCODE_PRICE_OFF || rc == TRADE_RETCODE_PRICE_CHANGED)
       {
          Sleep(200 + 100 * attempt);
          SymInfo.RefreshRates();
