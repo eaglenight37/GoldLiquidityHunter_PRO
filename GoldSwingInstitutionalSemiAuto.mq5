@@ -100,10 +100,10 @@ void SetupTradeFillingMode()
 
 void DeleteObjectsByPrefix()
 {
-   const int n = ObjectsTotal(0, 0, OBJ_ALL_TYPES);
+   const int n = ObjectsTotal(0, 0, -1);
    for(int i = n - 1; i >= 0; i--)
    {
-      string name = ObjectName(0, i, 0, OBJ_ALL_TYPES);
+      string name = ObjectName(0, i, 0, -1);
       if(StringFind(name, OBJ_PREFIX) == 0)
          ObjectDelete(0, name);
    }
